@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventario de Repuestos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Archivo:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: barra de carga arriba, resumen en números, lista de fichas de repuesto con foto a la izquierda */
+:root{
+  --bg:#eef0f2; --panel:#ffffff; --ink:#1b2127; --muted:#5d6872; --line:#d3d9de;
+  --accent:#f2a20c; --accent-ink:#231800; --ok:#1f7a4a; --warn:#b26a00; --bad:#b3261e;
+  --chip:#e3e7eb;
+  --display:"Archivo Narrow","Arial Narrow",system-ui,sans-serif;
+  --body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#14181c; --panel:#1d2329; --ink:#e8ecef; --muted:#97a3ad; --line:#2f3841;
+    --accent:#f5b02e; --accent-ink:#231800; --ok:#5fcf93; --warn:#f0b452; --bad:#ff8a80; --chip:#28313a;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14181c; --panel:#1d2329; --ink:#e8ecef; --muted:#97a3ad; --line:#2f3841;
+  --accent:#f5b02e; --accent-ink:#231800; --ok:#5fcf93; --warn:#f0b452; --bad:#ff8a80; --chip:#28313a;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);padding:16px;padding-bottom:48px}
+.wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font:700 28px/1.1 var(--display);margin:0;letter-spacing:.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.upload{display:flex;flex-direction:column;gap:10px;border-top:4px solid var(--accent)}
+.upload label.big{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--accent);color:var(--accent-ink);font:700 18px var(--display);letter-spacing:.02em;padding:14px;border-radius:8px;cursor:pointer;text-transform:uppercase}
+.upload label.big:focus-within{outline:3px solid var(--ink);outline-offset:2px}
+.upload input[type=file]{position:absolute;opacity:0;width:1px;height:1px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+input[type=text],input[type=number],select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%}
+input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.status{font-size:14px;color:var(--muted);min-height:1.2em}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.tile b{display:block;font:700 24px var(--display);font-variant-numeric:tabular-nums}
+.tile span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+@media (max-width:560px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tools input[type=text]{flex:1 1 200px;width:auto}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:999px;padding:5px 11px;font:500 13px var(--body);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:8px 12px;font:600 14px var(--body);cursor:pointer}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:default}
+.list{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:12px;display:grid;grid-template-columns:110px 1fr;gap:12px}
+.card[data-flag="ok"]{border-left-color:var(--ok)}
+.card[data-flag="warn"]{border-left-color:var(--warn)}
+.card[data-flag="bad"]{border-left-color:var(--bad)}
+.photo{width:110px;height:110px;border-radius:8px;object-fit:cover;background:var(--chip);display:block}
+.photo-link{display:block;padding:0;border:0;background:none;cursor:zoom-in;border-radius:8px}
+.noimg{visibility:hidden}
+.photo-link:has(.noimg)::after{content:"Foto no disponible";display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;color:var(--muted);width:110px;height:110px;margin-top:-110px;background:var(--chip);border-radius:8px}
+.viewer{position:fixed;inset:0;background:rgba(10,12,14,.94);z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
+.viewer img,.viewer video{max-width:100%;max-height:calc(100% - 120px);object-fit:contain;border-radius:6px;background:#222}
+.viewer .vbar{display:flex;gap:10px;align-items:center;color:#eee;font-size:14px}
+.viewer button{background:#2b3238;color:#fff;border:1px solid #444;border-radius:6px;padding:10px 14px;font:600 15px var(--body);cursor:pointer}
+.viewer a{color:#fff;font-weight:600}
+.viewer .cap{color:#ddd;font-size:14px;text-align:center;max-width:600px}
+.pcol{display:flex;flex-direction:column;gap:4px}
+.thumbs{display:flex;flex-wrap:wrap;gap:4px;max-width:110px}
+.thumbs img{width:34px;height:34px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid var(--line)}
+.thumbs img[aria-current="true"]{outline:2px solid var(--accent)}
+.vtag{font-size:11px;color:var(--muted);font-weight:600}
+.body{display:flex;flex-direction:column;gap:8px;min-width:0}
+.top{display:flex;gap:8px;align-items:flex-start}
+.top input.name{font:600 17px var(--body);background:transparent;border-color:transparent;padding:4px 6px;margin-left:-6px}
+.top input.name:hover{border-color:var(--line)}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--chip);color:var(--muted)}
+.pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)} .pill.ok{color:var(--ok)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.grid .wide{grid-column:span 2}
+@media (max-width:620px){.card{grid-template-columns:84px 1fr}.photo{width:84px;height:84px}.grid{grid-template-columns:1fr 1fr}.grid .wide{grid-column:span 2}}
+.price input{font-variant-numeric:tabular-nums;font-weight:600}
+.row-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row-actions a{color:var(--ink);font-weight:600;font-size:14px}
+.note{font-size:13px;color:var(--muted)}
+.empty{text-align:center;color:var(--muted);padding:28px 16px}
+textarea.out{min-height:200px;font-size:13px}
+.hidden{display:none!important}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.userbar{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--muted)}
+.login{max-width:380px;margin:40px auto 0;display:flex;flex-direction:column;gap:12px;border-top:4px solid var(--accent)}
+.login h2,.pwd h2{font:700 20px var(--display);margin:0}
+input[type=password]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%}
+.pwd{display:flex;flex-direction:column;gap:10px}
+.ml-info{font-size:13px;background:var(--chip);border-radius:6px;padding:6px 10px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.ml-info:empty{display:none}
+.ml-info b{font-variant-numeric:tabular-nums}
+.ml-info a{color:var(--ink);font-weight:600}
+.ml-info .btn{padding:4px 8px;font-size:13px}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .2s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <form class="panel login hidden" id="login" autocomplete="on">
+    <h2>Inventario de Repuestos</h2>
+    <p class="sub" style="margin:0">Entrá con tu usuario y contraseña.</p>
+    <div class="field"><label for="lUser">Usuario</label><input id="lUser" type="text" autocomplete="username" autocapitalize="none" required placeholder="lucas"></div>
+    <div class="field"><label for="lPass">Contraseña</label><input id="lPass" type="password" autocomplete="current-password" required></div>
+    <button class="btn primary" type="submit" id="lBtn">Entrar</button>
+    <div class="status" id="lStatus" role="status" aria-live="polite"></div>
+  </form>
+  <form class="panel pwd hidden" id="pwd">
+    <h2>Cambiar contraseña</h2>
+    <p class="sub" id="pwdMsg" style="margin:0">Elegí una contraseña nueva de al menos 8 caracteres.</p>
+    <div class="field"><label for="p1">Contraseña nueva</label><input id="p1" type="password" autocomplete="new-password" minlength="8" required></div>
+    <div class="field"><label for="p2">Repetila</label><input id="p2" type="password" autocomplete="new-password" minlength="8" required></div>
+    <div class="tools"><button class="btn primary" type="submit">Guardar</button><button class="btn" type="button" id="pwdCancel">Ahora no</button></div>
+    <div class="status" id="pwdStatus" role="status" aria-live="polite"></div>
+  </form>
+  <div id="app" class="hidden" style="display:flex;flex-direction:column;gap:16px">
+  <header class="hdr"><div>
+    <h1>Inventario de Repuestos</h1>
+    <p class="sub">Sacá una foto o un video corto por repuesto (en el video mostralo girando, de todos los lados). La IA lo identifica, busca el precio en MercadoLibre y queda en la lista para vender.</p>
+  </div>
+  <div class="userbar"><span id="whoami"></span><button class="btn" type="button" id="pwdBtn">Cambiar contraseña</button><button class="btn" type="button" id="outBtn">Salir</button></div>
+  </header>
+
+  <section class="panel upload" id="uploadPanel">
+    <label class="big" for="fileIn">Sacar o subir fotos o videos
+      <input id="fileIn" type="file" accept="image/*,video/*" multiple>
+    </label>
+    <div class="field">
+      <label for="batchNote">Nota para estas fotos (opcional)</label>
+      <input id="batchNote" type="text" placeholder="Ej: todo de Honda Wave, nuevos en caja, vienen 3 iguales">
+    </div>
+    <div class="status" id="upStatus" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="tiles" aria-label="Resumen">
+    <div class="tile"><b id="tItems">0</b><span>Repuestos</span></div>
+    <div class="tile"><b id="tUnits">0</b><span>Unidades</span></div>
+    <div class="tile"><b id="tValue">$0</b><span>Valor listado</span></div>
+    <div class="tile"><b id="tNoPrice">0</b><span>Sin precio</span></div>
+  </section>
+
+  <section class="panel" style="display:flex;flex-direction:column;gap:10px">
+    <div class="tools">
+      <input type="text" id="q" placeholder="Buscar por pieza, moto o código" aria-label="Buscar">
+    </div>
+    <div class="tools">
+      <button class="btn primary" id="xlsBtn" type="button">Descargar Excel</button>
+      <button class="btn" id="copyBtn" type="button">Copiar listado</button>
+      <button class="btn" id="mlAllBtn" type="button">Buscar precios en MercadoLibre</button>
+      <button class="btn hidden" id="mlConnBtn" type="button">Conectar MercadoLibre</button>
+      <button class="btn" id="estBtn" type="button">Estimar precios faltantes</button>
+    </div>
+    <p class="note" style="margin:0">"Buscar precios en MercadoLibre" trae el precio más bajo y el del medio de las publicaciones reales. Los precios estimados por la IA usan esos datos y los que ya cargaste a mano. Revisalos antes de publicar.</p>
+    <div class="chips" id="chips"></div>
+    <div class="status" id="copyStatus" role="status" aria-live="polite"></div>
+    <textarea class="out hidden" id="copyOut" aria-label="Listado para copiar" readonly></textarea>
+  </section>
+
+  <section class="panel hidden" id="impPanel" style="display:flex;flex-direction:column;gap:10px">
+    <h2 style="font:700 20px var(--display);margin:0">Importar datos de la app vieja</h2>
+    <p class="note" style="margin:0">Elegí la carpeta <b>Documentos › app-repuestos › migracion › datos</b>. Se suben las fotos y las fichas; si alguna ya estaba, no se duplica.</p>
+    <label class="btn primary" for="impIn" style="text-align:center">Elegir carpeta "datos"<input id="impIn" type="file" webkitdirectory multiple style="position:absolute;opacity:0;width:1px;height:1px"></label>
+    <div class="status" id="impStatus" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="list" id="list" aria-label="Repuestos"></section>
+  <div class="empty" id="empty">Cargando repuestos…</div>
+  </div>
+<div class="viewer hidden" id="viewer" role="dialog" aria-modal="true" aria-label="Foto del repuesto">
+  <img id="vImg" alt="">
+  <video id="vVid" class="hidden" controls playsinline></video>
+  <div class="cap" id="vCap"></div>
+  <div class="vbar"><button type="button" id="vPrev">‹ Anterior</button><span id="vNum"></span><button type="button" id="vNext">Siguiente ›</button><button type="button" id="vClose">Cerrar</button></div>
+  <div class="vbar" id="vLensBar"><button type="button" id="vSave">Guardar foto</button><a href="https://lens.google.com/" target="_blank" rel="noopener">Abrir Google Lens ↗</a></div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+const CATS=["Motor","Transmisión","Frenos","Eléctrico","Encendido","Carburación","Suspensión","Carrocería","Escape","Ruedas","Iluminación","Comandos y cables","Accesorios","Otro"];
+const ESTADOS=["Nuevo","Nuevo sin caja","Usado bueno","Usado a revisar","Para reparar"];
+const $=s=>document.querySelector(s);
+const money=n=>new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}).format(n||0);
+const esc=s=>String(s??"");
+
+let db=null, col=null, assets=null, sample=null, user=null, uid=null, canWrite=true, canImages=false, imgMax=4;
+/* ---------- Supabase: reemplaza a claude.use(...) del artefacto ---------- */
+const CFG=window.APP_CONFIG||{};
+const sb=(window.supabase&&CFG.SUPABASE_URL)?window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY):null;
+const DOMINIO=CFG.DOMINIO_USUARIOS||"repuestos-app.com.ar";
+const BUCKET="repuestos";
+const blobUrl=id=>id?`${CFG.SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(id)}`:"";
+const newId=()=>[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,"0")).join("");
+function sbErr(error){ const e=new Error(error.message||"error"); e.code=error.code||"error"; return e; }
+function makeCol(){
+  return {
+    doc(id){
+      id=id||newId();
+      return {
+        id,
+        async update(patch){ const {error}=await sb.rpc("patch_repuesto",{p_id:id,p_patch:patch}); if(error) throw sbErr(error); },
+        async set(data){ const {error}=await sb.from("repuestos").upsert({id,data,creado:data.creado||Date.now()}); if(error) throw sbErr(error); },
+        async delete(){ const {error}=await sb.from("repuestos").delete().eq("id",id); if(error) throw sbErr(error); }
+      };
+    }
+  };
+}
+const assetsApi={
+  async upload(blob,opts){
+    const id=newId(); const type=(opts&&opts.type)||blob.type||"image/jpeg";
+    const {error}=await sb.storage.from(BUCKET).upload(id,blob,{contentType:type,cacheControl:"31536000",upsert:false});
+    if(error){ const e=sbErr(error); if(/exceed|too large|size/i.test(error.message||"")) e.code="too_large"; throw e; }
+    return {id};
+  },
+  async delete(id){ await sb.storage.from(BUCKET).remove([id]); }
+};
+async function callFn(name,body){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session) throw {code:"not_granted"};
+  let r;
+  try{ r=await fetch(`${CFG.SUPABASE_URL}/functions/v1/${name}`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+session.access_token,apikey:CFG.SUPABASE_ANON_KEY},body:JSON.stringify(body)}); }
+  catch(e){ throw {code:"network"}; }
+  let j=null; try{ j=await r.json(); }catch(e){}
+  if(!r.ok) throw {code:(j&&j.code)||"error",message:(j&&j.error)||""};
+  return j;
+}
+sample={ async json(prompt,opts){ const j=await callFn("ia",{prompt,fotos:(opts&&opts.fotos)||[]}); return j.resultado; } };
+const downloadsApi={ async save({filename,data}){
+  const blob=data instanceof Blob?data:new Blob([data],{type:/\.xlsx$/.test(filename)?"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":/\.csv$/.test(filename)?"text/csv":"application/octet-stream"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; document.body.append(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+} };
+const docs=new Map();       // id -> data
+const cards=new Map();      // id -> element
+const localBlobs=new Map(); // id -> blob (para identificar sin volver a bajar la foto)
+const writeChains=new Map();
+let filterCat="Todos", filterSpecial="", query="";
+
+function chainWrite(id,fn){
+  const prev=writeChains.get(id)||Promise.resolve();
+  const next=prev.then(fn).catch(e=>{console.warn(e); if(e&&e.code==="invalid_argument"){canWrite=false;applyWriteGate();}});
+  writeChains.set(id,next); return next;
+}
+
+/* ---------- filtros ---------- */
+function renderChips(){
+  const box=$("#chips"); box.textContent="";
+  const used=new Set([...docs.values()].map(d=>d.categoria).filter(Boolean));
+  const opts=["Todos",...CATS.filter(c=>used.has(c))];
+  for(const c of opts){
+    const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=c;
+    b.setAttribute("aria-pressed",String(filterCat===c&&!filterSpecial));
+    b.onclick=()=>{filterCat=c;filterSpecial="";renderChips();applyFilter();};
+    box.append(b);
+  }
+  for(const [k,label] of [["sinprecio","Sin precio confirmado"],["revisar","A revisar"],["repetidos","Posibles repetidos"]]){
+    const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label;
+    b.setAttribute("aria-pressed",String(filterSpecial===k));
+    b.onclick=()=>{filterSpecial=filterSpecial===k?"":k;filterCat="Todos";renderChips();applyFilter();};
+    box.append(b);
+  }
+}
+function matches(d){
+  if(filterCat!=="Todos"&&d.categoria!==filterCat) return false;
+  if(filterSpecial==="sinprecio"&&Number(d.precio)>0&&!d.precioEstimado) return false;
+  if(filterSpecial==="revisar"&&!needsReview(d)) return false;
+  if(filterSpecial==="repetidos"&&!(dupMap.get(d.__id)||[]).length) return false;
+  if(query){
+    const hay=[d.pieza,d.marca,d.compat,d.codigo,d.categoria,d.nota].join(" ").toLowerCase();
+    if(!query.split(/\s+/).every(w=>hay.includes(w))) return false;
+  }
+  return true;
+}
+function needsReview(d){return d.ia==="pendiente"||d.ia==="error"||d.confianza==="baja"||!d.pieza;}
+function applyFilter(){
+  let shown=0;
+  for(const [id,el] of cards){const ok=matches(docs.get(id)||{});el.classList.toggle("hidden",!ok);if(ok)shown++;}
+  const empty=$("#empty");
+  if(docs.size===0){empty.textContent="Todavía no hay repuestos. Sacá la primera foto arriba.";empty.classList.remove("hidden");}
+  else if(shown===0){empty.textContent="Ningún repuesto coincide con el filtro.";empty.classList.remove("hidden");}
+  else empty.classList.add("hidden");
+}
+$("#q").addEventListener("input",e=>{query=e.target.value.trim().toLowerCase();applyFilter();});
+
+/* ---------- resumen ---------- */
+function renderTotals(){
+  let units=0,val=0,noPrice=0;
+  for(const d of docs.values()){const q=Number(d.cantidad)||1;units+=q;const p=Number(d.precio)||0;val+=p*q;if(!p)noPrice++;}
+  $("#tItems").textContent=docs.size;$("#tUnits").textContent=units;$("#tValue").textContent=money(val);$("#tNoPrice").textContent=noPrice;
+}
+
+/* ---------- ficha ---------- */
+function mlLink(d){
+  const q=(d.busqueda||[d.pieza,d.compat].filter(Boolean).join(" ")).trim();
+  if(!q) return "";
+  return "https://listado.mercadolibre.com.ar/"+encodeURIComponent(q.replace(/\s+/g,"-").toLowerCase());
+}
+function option(sel,v,label){const o=document.createElement("option");o.value=v;o.textContent=label??v;sel.append(o);}
+function buildCard(id){
+  const el=document.createElement("article");el.className="card";el.dataset.id=id;
+  el.innerHTML=`
+    <div class="pcol"><button class="photo-link" type="button" aria-label="Ver foto grande"><img class="photo" alt=""></button><div class="thumbs"></div></div>
+    <div class="body">
+      <div class="top"><input class="name" type="text" data-f="pieza" aria-label="Nombre de la pieza" placeholder="¿Qué repuesto es?"></div>
+      <div class="pills"></div>
+      <div class="grid">
+        <div class="field"><label>Categoría</label><select data-f="categoria"></select></div>
+        <div class="field"><label>Estado</label><select data-f="estado"></select></div>
+        <div class="field"><label>Cantidad</label><input type="number" min="1" step="1" data-f="cantidad" inputmode="numeric"></div>
+        <div class="field price"><label>Precio c/u ($)</label><input type="number" min="0" step="100" data-f="precio" inputmode="numeric" placeholder="0"></div>
+        <div class="field wide"><label>Sirve para</label><input type="text" data-f="compat" placeholder="Ej: Honda Wave 110, Motomel Blitz"></div>
+        <div class="field"><label>Marca</label><input type="text" data-f="marca"></div>
+        <div class="field"><label>Código</label><input type="text" data-f="codigo"></div>
+        <div class="field wide"><label>Buscar como</label><input type="text" data-f="busqueda" placeholder="Texto para buscar el precio"></div>
+        <div class="field wide"><label>Nota</label><input type="text" data-f="nota"></div>
+      </div>
+      <div class="note ai-note"></div>
+      <div class="ml-info"></div>
+      <div class="row-actions">
+        <button class="btn mlbtn" type="button">Buscar precio en MercadoLibre</button>
+        <a class="ml" target="_blank" rel="noopener">Ver en MercadoLibre ↗</a>
+        <button class="btn vid hidden" type="button">Ver video</button>
+        <button class="btn reid" type="button">Identificar con IA</button>
+        <button class="btn danger del" type="button">Borrar</button>
+      </div>
+    </div>`;
+  const cat=el.querySelector('[data-f="categoria"]');option(cat,"","Elegir…");CATS.forEach(c=>option(cat,c));
+  const est=el.querySelector('[data-f="estado"]');option(est,"","Elegir…");ESTADOS.forEach(c=>option(est,c));
+  el.querySelectorAll("[data-f]").forEach(inp=>{
+    inp.id="f-"+inp.dataset.f+"-"+id;
+    const lab=inp.previousElementSibling; if(lab&&lab.tagName==="LABEL") lab.htmlFor=inp.id;
+    inp.addEventListener("change",()=>{
+      const f=inp.dataset.f; let v=inp.value;
+      if(f==="cantidad") v=Math.max(1,parseInt(v,10)||1);
+      if(f==="precio") v=Math.max(0,Math.round(Number(v)||0));
+      if(typeof v==="string") v=v.trim();
+      const cur=docs.get(id)||{}; if(cur[f]===v) return;
+      const patch={[f]:v}; if(f==="cantidad") patch.cantidadManual=true; if(f==="precio") patch.precioEstimado=false; if(f==="pieza"&&v&&cur.ia!=="listo") patch.ia="listo";
+      docs.set(id,{...cur,...patch}); refreshMeta(el,docs.get(id)); renderTotals();
+      chainWrite(id,()=>col.doc(id).update(patch));
+    });
+  });
+  el.querySelector(".reid").onclick=()=>reidentify(id);
+  el.querySelector(".mlbtn").onclick=()=>buscarML(id);
+  el.querySelector(".vid").onclick=()=>openVideo(id);
+  const del=el.querySelector(".del");
+  del.onclick=async()=>{
+    if(del.dataset.armed!=="1"){del.dataset.armed="1";del.textContent="¿Seguro? Tocá de nuevo";setTimeout(()=>{del.dataset.armed="";del.textContent="Borrar";},4000);return;}
+    del.disabled=true;
+    const d=docs.get(id)||{};
+    try{await col.doc(id).delete(); if(assets){const ids=new Set([d.foto,d.video,...(Array.isArray(d.fotos)?d.fotos:[])].filter(Boolean));ids.forEach(x=>assets.delete(x).catch(()=>{}));} }
+    catch(e){del.disabled=false;del.textContent="No se pudo borrar";}
+  };
+  return el;
+}
+function fotoList(d){ return (Array.isArray(d.fotos)&&d.fotos.length)?d.fotos:(d.foto?[d.foto]:[]); }
+function miniOf(d,fid){ const l=fotoList(d), m=Array.isArray(d.minis)?d.minis:[]; const i=l.indexOf(fid); return (i>=0&&m[i])||m[0]||""; }
+function setImg(img,fid,mini){
+  const src=fid?blobUrl(fid):"";
+  if(img.dataset.fid===fid&&img.dataset.mini===(mini?"1":"0")&&img.getAttribute("src")) return;
+  img.dataset.fid=fid||""; img.dataset.mini=mini?"1":"0"; img.classList.remove("noimg");
+  img.onerror=()=>{ img.onerror=null; if(mini&&img.getAttribute("src")!==mini) img.src=mini; else img.classList.add("noimg"); };
+  if(src) img.src=src; else if(mini) img.src=mini; else img.classList.add("noimg");
+}
+function fillCard(el,d){
+  const img=el.querySelector(".photo"), btn=el.querySelector(".photo-link");
+  setImg(img,d.foto,miniOf(d,d.foto));
+  img.alt=d.pieza?("Foto: "+d.pieza):"Foto del repuesto";
+  btn.onclick=()=>openViewer(el.dataset.id, img.dataset.fid||d.foto);
+  const th=el.querySelector(".thumbs"), list=Array.isArray(d.fotos)?d.fotos:[];
+  const key=list.join()+"|"+(Array.isArray(d.minis)?d.minis.length:0);
+  if(th.dataset.k!==key){
+    th.dataset.k=key; th.textContent="";
+    if(list.length>1){
+      list.forEach((fid,i)=>{const t=document.createElement("img");setImg(t,fid,miniOf(d,fid));t.alt="Ángulo "+(i+1);t.tabIndex=0;
+        t.setAttribute("aria-current",String(fid===d.foto));
+        const show=()=>{setImg(img,fid,miniOf(docs.get(el.dataset.id)||d,fid));th.querySelectorAll("img").forEach(x=>x.setAttribute("aria-current",String(x===t)));};
+        t.onclick=show; t.onkeydown=ev=>{if(ev.key==="Enter")show();}; th.append(t);});
+      const tag=document.createElement("span");tag.className="vtag";tag.textContent="Del video";th.append(tag);
+    }
+  }
+  el.querySelectorAll("[data-f]").forEach(inp=>{
+    const v=d[inp.dataset.f]; const s=(v===undefined||v===null||(inp.dataset.f==="precio"&&!v))?"":String(v);
+    if(document.activeElement!==inp && inp.value!==s) inp.value=s;
+    inp.disabled=!canWrite;
+  });
+  refreshMeta(el,d);
+}
+function refreshMeta(el,d){
+  const pills=el.querySelector(".pills"); pills.textContent="";
+  const add=(t,c)=>{const s=document.createElement("span");s.className="pill "+(c||"");s.textContent=t;pills.append(s);};
+  let flag="ok";
+  const dups=dupMap.get(d.__id)||[];
+  if(dups.length){
+    const names=dups.slice(0,2).map(x=>{const o=docs.get(x.id)||{};return (o.pieza||"otra ficha")+(x.why==="foto"?" (misma foto)":x.why==="codigo"?" (mismo código)":"");});
+    add("Posible repetido de: "+names.join(", ")+(dups.length>2?` y ${dups.length-2} más`:""),"bad"); flag="bad";
+  }
+  if(d.ia==="pendiente"){add("Identificando…","warn");flag="warn";}
+  else if(d.ia==="error"){add("Sin identificar","bad");flag="bad";}
+  else if(d.confianza==="baja"){add("IA no segura: revisar","warn");flag="warn";}
+  else if(d.confianza) add("IA: confianza "+d.confianza,"ok");
+  if(!(Number(d.precio)>0)){add("Sin precio","warn");if(flag==="ok")flag="warn";}
+  else{ if(d.precioEstimado){add("Precio estimado IA: revisar","warn");if(flag==="ok")flag="warn";}
+        add(money(Number(d.precio)*(Number(d.cantidad)||1))+" total","ok"); }
+  if(dups.length) flag="bad";
+  el.dataset.flag=flag;
+  el.querySelector(".ai-note").textContent=d.comentario||"";
+  el.querySelector(".vid").classList.toggle("hidden",!d.video);
+  const ml=el.querySelector(".ml"), href=mlLink(d);
+  if(href){ml.href=href;ml.classList.remove("hidden");}else ml.classList.add("hidden");
+  const re=el.querySelector(".reid"); re.classList.toggle("hidden",!sample||!canImages||!canWrite||d.ia==="pendiente");
+  el.querySelector(".mlbtn").classList.toggle("hidden",!canWrite||!(d.busqueda||d.pieza)||mlBusy.has(d.__id));
+  renderML(el,d);
+  el.querySelector(".del").classList.toggle("hidden",!canWrite);
+}
+function applyWriteGate(){
+  $("#uploadPanel").classList.toggle("hidden",!canWrite||!assets);
+  for(const [id,el] of cards) fillCard(el,docs.get(id)||{});
+}
+
+/* ---------- snapshot ---------- */
+function onSnap(snap){
+  clearTimeout(loadTimer);
+  const order=[];
+  const seen=new Set();
+  for(const ds of snap.docs){
+    const d={...(ds.data()||{}),__id:ds.id}; order.push(ds.id); seen.add(ds.id);
+    // no pisar lo que esta persona está escribiendo
+    const prev=docs.get(ds.id); docs.set(ds.id,{...d});
+    let el=cards.get(ds.id);
+    if(!el){el=buildCard(ds.id);cards.set(ds.id,el);}
+    if(prev!==d) fillCard(el,d);
+  }
+  for(const id of [...cards.keys()]) if(!seen.has(id)){cards.get(id).remove();cards.delete(id);docs.delete(id);}
+  const list=$("#list"), current=[...list.children].map(c=>c.dataset.id);
+  if(current.join()!==order.join()){
+    const focused=document.activeElement;
+    order.forEach(id=>list.append(cards.get(id)));
+    if(focused&&focused.focus&&document.contains(focused)) focused.focus();
+  }
+  computeDups(); hashMissing();
+  renderTotals(); renderChips(); applyFilter();
+}
+
+/* ---------- fotos ---------- */
+async function shrink(file){
+  try{
+    const bmp=await createImageBitmap(file,{imageOrientation:"from-image"});
+    const max=1400, r=Math.min(1,max/Math.max(bmp.width,bmp.height));
+    const c=document.createElement("canvas");c.width=Math.round(bmp.width*r);c.height=Math.round(bmp.height*r);
+    c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
+    return await new Promise(res=>c.toBlob(b=>res(b||file),"image/jpeg",0.82));
+  }catch(e){return file;}
+}
+function evenPick(arr,k){ if(arr.length<=k) return arr.slice(); const out=[]; for(let i=0;i<k;i++) out.push(arr[Math.round(i*(arr.length-1)/(k-1||1))]); return [...new Set(out)]; }
+function waitEv(el,ev,ms){return new Promise(res=>{const t=setTimeout(()=>{el.removeEventListener(ev,h);res(false);},ms);const h=()=>{clearTimeout(t);el.removeEventListener(ev,h);res(true);};el.addEventListener(ev,h);});}
+async function grabFrames(file,n){
+  const url=URL.createObjectURL(file);
+  const v=document.createElement("video"); v.muted=true; v.playsInline=true; v.setAttribute("playsinline",""); v.preload="auto"; v.src=url;
+  const frames=[];
+  try{
+    if(!(await waitEv(v,"loadedmetadata",15000))) return frames;
+    if(v.readyState<2) await waitEv(v,"loadeddata",8000);
+    const dur=(isFinite(v.duration)&&v.duration>0)?v.duration:1;
+    const count=Math.max(1,Math.min(n,Math.ceil(dur/1.2)));
+    const c=document.createElement("canvas");
+    for(let i=0;i<count;i++){
+      const t=Math.min(Math.max(dur-0.1,0),dur*(i+0.5)/count);
+      const p=waitEv(v,"seeked",5000); v.currentTime=t; await p;
+      const w=v.videoWidth,h=v.videoHeight; if(!w||!h) continue;
+      const r=Math.min(1,1280/Math.max(w,h)); c.width=Math.round(w*r); c.height=Math.round(h*r);
+      c.getContext("2d").drawImage(v,0,0,c.width,c.height);
+      const b=await new Promise(res=>c.toBlob(res,"image/jpeg",0.82)); if(b) frames.push(b);
+    }
+  }finally{ URL.revokeObjectURL(url); }
+  return frames;
+}
+/* ---------- repetidos ---------- */
+const phCache=new Map();   // assetId -> hex dHash
+const dupMap=new Map();    // docId -> [{id, why}]
+async function dhash(blob){
+  try{
+    const bmp=await createImageBitmap(blob);
+    const c=document.createElement("canvas"); c.width=9; c.height=8;
+    const x=c.getContext("2d",{willReadFrequently:true}); x.drawImage(bmp,0,0,9,8);
+    const px=x.getImageData(0,0,9,8).data; const g=[];
+    for(let i=0;i<72;i++) g.push(px[i*4]*0.299+px[i*4+1]*0.587+px[i*4+2]*0.114);
+    let hex="";
+    for(let r=0;r<8;r++){ let byte=0; for(let col=0;col<8;col++){ byte=(byte<<1)|(g[r*9+col]>g[r*9+col+1]?1:0); } hex+=byte.toString(16).padStart(2,"0"); }
+    return hex;
+  }catch(e){return "";}
+}
+function ham(a,b){ if(!a||!b||a.length!==b.length) return 99; let d=0; for(let i=0;i<a.length;i+=2){ let v=parseInt(a.substr(i,2),16)^parseInt(b.substr(i,2),16); while(v){d+=v&1;v>>=1;} } return d; }
+async function fileDigest(f){
+  try{ if(f.size<=300*1024*1024&&crypto&&crypto.subtle){ const h=await crypto.subtle.digest("SHA-256",await f.arrayBuffer()); return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join(""); } }catch(e){}
+  return "n:"+(f.name||"")+"|"+f.size+"|"+(f.lastModified||0);
+}
+function hashesOf(d){
+  const ids=(Array.isArray(d.fotos)&&d.fotos.length)?d.fotos:(d.foto?[d.foto]:[]);
+  const out=Array.isArray(d.phashes)?d.phashes.filter(Boolean):[];
+  ids.forEach(id=>{const h=phCache.get(id); if(h) out.push(h);});
+  return [...new Set(out)];
+}
+const normCode=c=>String(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+function computeDups(){
+  const prev=new Map([...dupMap].map(([k,v])=>[k,v.map(x=>x.id+x.why).join()]));
+  dupMap.clear();
+  const arr=[...docs.entries()].map(([id,d])=>({id,d,h:hashesOf(d),c:normCode(d.codigo)}));
+  const push=(a,b,why)=>{ if(!dupMap.has(a)) dupMap.set(a,[]); const l=dupMap.get(a); if(!l.some(x=>x.id===b)) l.push({id:b,why}); };
+  for(let i=0;i<arr.length;i++) for(let j=i+1;j<arr.length;j++){
+    const A=arr[i],B=arr[j]; let why="";
+    if(A.d.fileHash&&A.d.fileHash===B.d.fileHash) why="foto";
+    else if(A.h.length&&B.h.length&&A.h.some(x=>B.h.some(y=>ham(x,y)<=4))) why="foto";
+    else if(A.c.length>=6&&A.c===B.c) why="codigo";
+    if(why){push(A.id,B.id,why);push(B.id,A.id,why);}
+  }
+  for(const [id,el] of cards){
+    const now=(dupMap.get(id)||[]).map(x=>x.id+x.why).join();
+    if(now!==(prev.get(id)||"")) refreshMeta(el,docs.get(id)||{});
+  }
+}
+let hashing=false;
+async function makeMini(blob){
+  try{
+    const bmp=await createImageBitmap(blob); const r=Math.min(1,320/Math.max(bmp.width,bmp.height));
+    const c=document.createElement("canvas"); c.width=Math.round(bmp.width*r); c.height=Math.round(bmp.height*r);
+    c.getContext("2d").drawImage(bmp,0,0,c.width,c.height); return c.toDataURL("image/jpeg",0.62);
+  }catch(e){return "";}
+}
+async function hashMissing(){
+  if(hashing) return; hashing=true;
+  try{
+    let changed=false;
+    for(const [docId,d] of [...docs.entries()]){
+      const ids=fotoList(d);
+      const needHash=!(Array.isArray(d.phashes)&&d.phashes.length);
+      const needMini=!(Array.isArray(d.minis)&&d.minis.length===ids.length&&d.minis.every(Boolean));
+      if(!ids.length||(!needHash&&!needMini)) continue;
+      if(!needHash&&!canWrite) continue;
+      if(phCache.has("done:"+docId)) continue; phCache.set("done:"+docId,"1");
+      const hs=[], ms=[]; let ok=true;
+      for(const id of ids){
+        try{ const r=await fetch(blobUrl(id)); if(!r.ok){ok=false;break;} const b=await r.blob();
+          const h=await dhash(b); hs.push(h); if(h){phCache.set(id,h);changed=true;}
+          if(needMini) ms.push(await makeMini(b));
+        }catch(e){ok=false;break;}
+      }
+      if(ok&&canWrite&&col){
+        const patch={}; if(needHash&&hs.some(Boolean)) patch.phashes=hs.filter(Boolean); if(needMini&&ms.every(Boolean)) patch.minis=ms;
+        if(Object.keys(patch).length){ docs.set(docId,{...docs.get(docId),...patch}); chainWrite(docId,()=>col.doc(docId).update(patch)); }
+      }
+    }
+    if(changed){ computeDups(); renderChips(); applyFilter(); }
+  }finally{ hashing=false; }
+}
+/* ---------- visor de fotos ---------- */
+let vState=null;
+function openViewer(docId,fid){
+  const d=docs.get(docId)||{}; const list=fotoList(d); if(!list.length) return;
+  vState={docId,list,i:Math.max(0,list.indexOf(fid))};
+  $("#viewer").classList.remove("hidden"); showViewer(); $("#vClose").focus();
+}
+function openVideo(docId){
+  const d=docs.get(docId)||{}; if(!d.video) return;
+  vState={docId,list:[],i:0,video:true};
+  const v=$("#vVid"); v.src=blobUrl(d.video); v.classList.remove("hidden"); $("#vImg").classList.add("hidden");
+  v.onerror=()=>{ $("#vCap").textContent="No se pudo cargar el video en esta vista."; };
+  $("#vCap").textContent=[d.pieza,d.compat].filter(Boolean).join(" · ");
+  $("#vPrev").classList.add("hidden"); $("#vNext").classList.add("hidden"); $("#vNum").textContent=""; $("#vLensBar").classList.add("hidden");
+  $("#viewer").classList.remove("hidden"); $("#vClose").focus();
+}
+function showViewer(){
+  const d=docs.get(vState.docId)||{}; const fid=vState.list[vState.i];
+  const im=$("#vImg"); im.classList.remove("hidden"); $("#vVid").classList.add("hidden"); $("#vLensBar").classList.remove("hidden"); delete im.dataset.fid; setImg(im,fid,miniOf(d,fid)); im.alt=d.pieza||"Foto del repuesto";
+  $("#vCap").textContent=[d.pieza,d.compat].filter(Boolean).join(" · ");
+  const many=vState.list.length>1; $("#vPrev").classList.toggle("hidden",!many); $("#vNext").classList.toggle("hidden",!many);
+  $("#vNum").textContent=many?`${vState.i+1} de ${vState.list.length}`:"";
+}
+function closeViewer(){ const v=$("#vVid"); try{v.pause();}catch(e){} v.removeAttribute("src"); v.load(); $("#viewer").classList.add("hidden"); vState=null; }
+$("#vClose").onclick=closeViewer;
+function dataUrlBlob(u){ const b=atob(u.split(",")[1]); const a=new Uint8Array(b.length); for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return new Blob([a],{type:"image/jpeg"}); }
+$("#vSave").onclick=async()=>{
+  if(!vState||vState.video) return;
+  const cap=$("#vCap");
+  if(!downloads){ cap.textContent="En esta vista no se puede guardar la foto. Sacale una captura de pantalla."; return; }
+  const d=docs.get(vState.docId)||{}; const fid=vState.list[vState.i]; let blob=null;
+  try{ const r=await fetch(blobUrl(fid)); if(r.ok) blob=await r.blob(); }catch(e){}
+  if(!blob){ const m=miniOf(d,fid); if(m){ try{ blob=dataUrlBlob(m); }catch(e){} } }
+  if(!blob){ cap.textContent="No se pudo leer la foto."; return; }
+  try{ await downloads.save({filename:"repuesto-"+String(fid).slice(0,6)+".jpg",data:blob}); cap.textContent="Foto guardada. Abrila en Google Lens para buscarla."; }
+  catch(e){ cap.textContent=e&&e.code==="declined"?"Guardado cancelado.":"No se pudo guardar la foto en esta vista. Sacale una captura de pantalla."; }
+};
+$("#vPrev").onclick=()=>{if(!vState||vState.video)return;vState.i=(vState.i-1+vState.list.length)%vState.list.length;showViewer();};
+$("#vNext").onclick=()=>{if(!vState||vState.video)return;vState.i=(vState.i+1)%vState.list.length;showViewer();};
+$("#viewer").addEventListener("click",e=>{ if(e.target.id==="viewer") closeViewer(); });
+document.addEventListener("keydown",e=>{ if(!vState) return; if(e.key==="Escape") closeViewer(); if(e.key==="ArrowLeft") $("#vPrev").click(); if(e.key==="ArrowRight") $("#vNext").click(); });
+let aiQueue=Promise.resolve();
+function queueIdentify(id,fotos){ aiQueue=aiQueue.then(()=>identify(id,fotos)).catch(()=>{}); return aiQueue; }
+
+function prompt(nota,nImgs){
+  return `Sos un experto en repuestos de motos del mercado argentino (Honda, Yamaha, Suzuki, Motomel, Gilera, Corven, Zanella, Keller, Mondial, Guerrero, Bajaj, Beta, Siambretta, etc., sobre todo motos 110 a 300 cc).
+Mirá ${nImgs>1?`estas ${nImgs} imágenes: son cuadros de un video del MISMO repuesto mostrado desde distintos lados. Combiná lo que se ve en todas (etiquetas, códigos, encastres, daños) y describí UN solo repuesto`:"la foto e identificá el repuesto"} para armar un listado de venta.
+${nota?`Nota de quien sacó la foto: "${nota}"\n`:""}
+Respondé SOLO un objeto JSON con estas claves:
+{"pieza": nombre corto y claro en español rioplatense (ej "Bobina de encendido", "Kit de transmisión 428H"),
+ "categoria": una de ${JSON.stringify(CATS)},
+ "marca": marca del repuesto si se ve en la caja o la pieza, si no "",
+ "compat": modelos de moto para los que sirve (lo más probable), o "" si no se puede saber,
+ "codigo": número de parte o código visible en la foto, o "",
+ "estado": uno de ${JSON.stringify(ESTADOS)} según lo que se ve,
+ "cantidad": cuántas unidades iguales se ven (número entero, mínimo 1),
+ "busqueda": texto corto para buscar este repuesto en MercadoLibre Argentina (ej "bobina encendido honda wave 110"),
+ "confianza": "alta", "media" o "baja",
+ "comentario": una frase corta con lo que conviene verificar, o "",
+ "precio_estimado": precio de venta sugerido por unidad en pesos argentinos (número entero) para venderlo rápido en MercadoLibre o Marketplace}
+${anchorsText()}
+Si la foto no muestra un repuesto claro, poné confianza "baja" y explicalo en comentario.`;
+}
+function anchors(){
+  return [...docs.values()].filter(d=>Number(d.precio)>0&&!d.precioEstimado&&d.pieza).slice(0,25)
+    .map(d=>`- ${d.pieza}${d.compat?" ("+d.compat+")":""}, ${d.estado||"s/estado"}: $${Math.round(d.precio)}`);
+}
+function anchorsText(){
+  const a=anchors();
+  const fecha=new Date().toLocaleDateString("es-AR",{month:"long",year:"numeric"});
+  return `Para el precio: estamos en ${fecha} en Argentina, con precios en pesos que suben con la inflación; no uses precios viejos de memoria.`+
+    (a.length?`\nEstos son precios que el dueño ya fijó para otros repuestos del mismo lote. Usalos como referencia de escala y estimá en proporción (piezas más grandes, de motor o de motos de mayor cilindrada valen más; usados o para reparar, menos):\n${a.join("\n")}`:
+    `\nTodavía no hay precios de referencia cargados, así que estimá con prudencia.`);
+}
+function cleanPrice(v){const n=Math.round(Number(String(v).replace(/[^\d.]/g,""))||0);return n>0?Math.round(n/500)*500||500:0;}
+async function identify(id,fotos){
+  const imgs=(Array.isArray(fotos)?fotos:[fotos]).filter(Boolean).slice(0,imgMax);
+  if(!sample||!canImages||!imgs.length) return;
+  const d=docs.get(id)||{};
+  try{
+    const r=await sample.json(prompt(d.nota||"",imgs.length),{fotos:imgs});
+    if(!r||typeof r!=="object") throw {code:"invalid_json"};
+    const cur=docs.get(id)||{};
+    const patch={ia:"listo"};
+    const keep=(k,v)=>{ if(!cur[k] && v!==undefined && v!==null && v!=="") patch[k]=v; };
+    keep("pieza",String(r.pieza||"").slice(0,120));
+    keep("categoria",CATS.includes(r.categoria)?r.categoria:"Otro");
+    keep("marca",String(r.marca||"").slice(0,80));
+    keep("compat",String(r.compat||"").slice(0,200));
+    keep("codigo",String(r.codigo||"").slice(0,80));
+    keep("estado",ESTADOS.includes(r.estado)?r.estado:"");
+    keep("busqueda",String(r.busqueda||"").slice(0,120));
+    if(!cur.cantidadManual){const q=parseInt(r.cantidad,10); if(q>1) patch.cantidad=q;}
+    patch.confianza=["alta","media","baja"].includes(r.confianza)?r.confianza:"media";
+    patch.comentario=String(r.comentario||"").slice(0,240);
+    const pe=cleanPrice(r.precio_estimado);
+    if(pe&&!(Number(cur.precio)>0)){patch.precio=pe;patch.precioEstimado=true;}
+    docs.set(id,{...cur,...patch});
+    await chainWrite(id,()=>col.doc(id).update(patch));
+    if(patch.busqueda||cur.busqueda||patch.pieza) queueML(id);
+  }catch(e){
+    if(e&&(e.code==="not_granted"||e.code==="sampling_disabled"||e.code==="images_unavailable")){canImages=false;}
+    const msg=e&&e.code==="rate_limited"?"La IA está ocupada. Probá \"Identificar con IA\" en un rato.":
+             e&&e.code==="not_granted"?"No se dio permiso a la IA. Completá los datos a mano.":
+             "No se pudo identificar. Completá los datos a mano o probá de nuevo.";
+    await chainWrite(id,()=>col.doc(id).update({ia:"error",comentario:msg}));
+  }
+}
+async function reidentify(id){
+  const d=docs.get(id)||{};
+  const blob=fotoList(d);
+  if(!blob.length){ await chainWrite(id,()=>col.doc(id).update({ia:"error",comentario:"No se pudo leer la foto para identificarla."})); return; }
+  const reset={ia:"pendiente",comentario:"",pieza:"",categoria:"",marca:"",compat:"",codigo:"",busqueda:""};
+  docs.set(id,{...d,...reset});
+  await chainWrite(id,()=>col.doc(id).update(reset));
+  queueIdentify(id,blob);
+}
+$("#fileIn").addEventListener("change",async e=>{
+  const files=[...e.target.files]; e.target.value=""; if(!files.length) return;
+  const nota=$("#batchNote").value.trim(); const st=$("#upStatus");
+  let n=0, skipped=0, flagged=0, noVid=0;
+  const batchHashes=new Set();
+  for(const f of files){
+    n++;
+    const fileHash=await fileDigest(f);
+    if(batchHashes.has(fileHash)||[...docs.values()].some(d=>d.fileHash===fileHash)){ skipped++; continue; }
+    batchHashes.add(fileHash);
+    const isVideo=(f.type||"").startsWith("video/")||/\.(mp4|mov|m4v|webm|3gp)$/i.test(f.name||"");
+    st.textContent=isVideo?`Sacando cuadros del video ${n} de ${files.length}…`:`Subiendo foto ${n} de ${files.length}…`;
+    try{
+      let blob, extra=null, up, vidId="";
+      if(isVideo){
+        const frames=await grabFrames(f,8);
+        if(!frames.length) throw {code:"video"};
+        const pick=evenPick(frames,4);
+        st.textContent=`Subiendo ${pick.length} cuadros del video ${n} de ${files.length}…`;
+        extra=[]; var phs=[], minis=[]; for(const fr of pick){ const id=(await assets.upload(fr)).id; extra.push(id); const h=await dhash(fr); phs.push(h); if(h) phCache.set(id,h); minis.push(await makeMini(fr)); }
+        up={id:extra[Math.floor((extra.length-1)/2)]};
+        blob=evenPick(frames,imgMax);
+        const vt=(f.type||"").split(";")[0]||(/\.mov$/i.test(f.name||"")?"video/quicktime":"video/mp4");
+        if(["video/mp4","video/webm","video/quicktime","video/x-m4v","video/3gpp"].includes(vt)&&f.size<=50*1024*1024){
+          st.textContent=`Guardando el video ${n} de ${files.length}…`;
+          try{ vidId=(await assets.upload(f,{type:vt})).id; }catch(e){ vidId=""; }
+        }
+        if(!vidId) noVid++;
+      }else{
+        blob=await shrink(f);
+        up=await assets.upload(blob);
+        var phs=[await dhash(blob)], minis=[await makeMini(blob)]; if(phs[0]) phCache.set(up.id,phs[0]);
+      }
+      const ref=col.doc();
+      const fotosIA=extra||[up.id];
+      const mine=phs.filter(Boolean);
+      if([...docs.values()].some(d=>{const h=hashesOf(d);return mine.some(x=>h.some(y=>ham(x,y)<=4));})) flagged++;
+      await ref.set({foto:up.id,fotos:extra||[up.id],origen:isVideo?"video":"foto",video:vidId,fileHash,phashes:mine,minis:minis.every(Boolean)?minis:[],pieza:"",categoria:"",marca:"",compat:"",codigo:"",estado:"",cantidad:1,precio:0,
+        busqueda:"",nota,confianza:"",comentario:"",ia:(sample&&canImages)?"pendiente":"error",creado:Date.now(),autor:uid||""});
+      if(sample&&canImages) queueIdentify(ref.id,fotosIA);
+    }catch(err){
+      st.textContent=(err&&err.code==="video")?"No se pudo leer ese video. Probá grabarlo de nuevo o subí fotos.":(err&&err.code==="quota_exceeded")?"No hay más lugar para fotos. Borrá algunas que no sirvan.":"No se pudo subir una foto. Revisá la conexión y probá de nuevo.";
+      return;
+    }
+  }
+  const subidos=files.length-skipped;
+  let msg=subidos===0?"":subidos===1?"Listo. La IA lo está identificando abajo.":`${subidos} archivos cargados. La IA los va identificando abajo.`;
+  if(skipped) msg+=(msg?" ":"")+(skipped===1?"Salteé 1 archivo porque ya estaba cargado.":`Salteé ${skipped} archivos porque ya estaban cargados.`);
+  if(flagged) msg+=` Ojo: ${flagged===1?"1 se parece":flagged+" se parecen"} a algo ya cargado; quedó marcado como posible repetido.`;
+  if(noVid) msg+=` ${noVid===1?"1 video no se guardó entero":noVid+" videos no se guardaron enteros"} (pesa más de 50 MB o el formato no se reconoce); quedaron sus cuadros como fotos.`;
+  st.textContent=msg;
+});
+
+/* ---------- copiar listado ---------- */
+$("#copyBtn").addEventListener("click",async()=>{
+  const items=[...docs.values()].filter(matches).filter(d=>d.pieza);
+  if(!items.length){$("#copyStatus").textContent="No hay repuestos identificados para copiar.";return;}
+  const groups={};
+  for(const d of items){(groups[d.categoria||"Otro"]??=[]).push(d);}
+  let txt="REPUESTOS DE MOTO A LA VENTA\n";
+  for(const c of [...CATS,...Object.keys(groups).filter(k=>!CATS.includes(k))]){
+    if(!groups[c]) continue;
+    txt+=`\n${c.toUpperCase()}\n`;
+    for(const d of groups[c]){
+      const parts=[d.pieza];
+      if(d.compat) parts.push("("+d.compat+")");
+      let line="• "+parts.join(" ");
+      if(d.estado) line+=" · "+d.estado;
+      if((Number(d.cantidad)||1)>1) line+=" · x"+d.cantidad;
+      line+=" · "+(Number(d.precio)>0?money(d.precio)+" c/u":"consultar");
+      txt+=line+"\n";
+    }
+  }
+  const out=$("#copyOut");
+  try{await navigator.clipboard.writeText(txt);$("#copyStatus").textContent=`Listado copiado (${items.length} repuestos). Pegalo en WhatsApp o Marketplace.`;out.classList.add("hidden");}
+  catch(e){out.value=txt;out.classList.remove("hidden");out.focus();out.select();$("#copyStatus").textContent="Copialo desde el cuadro de abajo.";}
+});
+
+/* ---------- estimar precios en lote ---------- */
+$("#estBtn").addEventListener("click",async()=>{
+  const btn=$("#estBtn"), st=$("#copyStatus");
+  const todo=[...docs.entries()].filter(([id,d])=>d.pieza&&!(Number(d.precio)>0)).slice(0,40);
+  if(!todo.length){st.textContent="Todos los repuestos identificados ya tienen precio.";return;}
+  btn.disabled=true; st.textContent=`Estimando precios de ${todo.length} repuestos… puede tardar un minuto.`;
+  const lista=todo.map(([id,d])=>({id,pieza:d.pieza,sirve_para:d.compat||"",marca:d.marca||"",estado:d.estado||"",codigo:d.codigo||"",
+    ...(d.ml&&d.ml.n>0?{mercadolibre_minimo:d.ml.min,mercadolibre_mediana:d.ml.mediana,publicaciones:d.ml.n}:{})}));
+  const input=`Sos un vendedor de repuestos de motos en Argentina. Estimá un precio de venta por unidad en pesos argentinos para cada repuesto de esta lista, pensando en venderlo rápido en MercadoLibre o Marketplace.
+${anchorsText()}
+
+Cuando un repuesto trae "mercadolibre_minimo" y "mercadolibre_mediana", son precios reales de publicaciones de hoy: para vender rápido apuntá un poco por debajo de la mediana, sin bajar mucho del mínimo (salvo que el estado sea usado o para reparar).
+
+Repuestos:
+${JSON.stringify(lista)}
+
+Respondé SOLO un array JSON con un objeto por repuesto: [{"id": "...", "precio": número entero}]. Usá exactamente los mismos id.`;
+  try{
+    const r=await sample.json(input,{cache:false});
+    if(!Array.isArray(r)) throw {code:"invalid_json"};
+    let n=0;
+    for(const it of r){
+      const id=String(it&&it.id||""), p=cleanPrice(it&&it.precio), cur=docs.get(id);
+      if(!cur||!p||Number(cur.precio)>0) continue;
+      docs.set(id,{...cur,precio:p,precioEstimado:true}); n++;
+      await chainWrite(id,()=>col.doc(id).update({precio:p,precioEstimado:true}));
+    }
+    renderTotals(); for(const [id,el] of cards) fillCard(el,docs.get(id)||{});
+    st.textContent=n?`Listo: se estimaron ${n} precios. Revisalos antes de publicar.`:"La IA no devolvió precios válidos. Probá de nuevo.";
+  }catch(e){
+    st.textContent=e&&e.code==="rate_limited"?"La IA está ocupada. Probá en un rato.":e&&e.code==="not_granted"?"No se dio permiso a la IA para estimar precios.":"No se pudieron estimar los precios. Probá de nuevo.";
+  }finally{btn.disabled=false;}
+});
+
+/* ---------- precios reales de MercadoLibre ---------- */
+const mlBusy=new Set();
+let mlQueue=Promise.resolve();
+function queueML(id){ mlQueue=mlQueue.then(()=>buscarML(id,true)).catch(()=>{}); return mlQueue; }
+function haceCuanto(ts){ const d=Math.floor((Date.now()-ts)/86400000); return d<=0?"hoy":d===1?"ayer":`hace ${d} días`; }
+function renderML(el,d){
+  const box=el.querySelector(".ml-info"); box.textContent="";
+  if(mlBusy.has(d.__id)){ box.textContent="Buscando en MercadoLibre…"; return; }
+  const m=d.ml; if(!m) return;
+  if(m.error){ box.textContent="MercadoLibre: "+m.error; return; }
+  if(!m.n){ box.textContent=`MercadoLibre: no hay publicaciones para "${m.q}". Cambiá "Buscar como" y probá de nuevo.`; return; }
+  const t=document.createElement("span"); t.innerHTML="MercadoLibre: desde <b></b> · mediana <b></b>";
+  const bs=t.querySelectorAll("b"); bs[0].textContent=money(m.min); bs[1].textContent=money(m.mediana);
+  const info=document.createElement("span"); info.className="note";
+  info.textContent=`${m.n} publicaciones${m.condicion==="new"?" nuevas":m.condicion==="used"?" usadas":""}, ${haceCuanto(m.fecha)}`;
+  const a=document.createElement("a"); a.href=m.enlace||m.listado; a.target="_blank"; a.rel="noopener"; a.textContent="Ver la más barata ↗"; if(m.titulo) a.title=m.titulo;
+  box.append(t,info,a);
+  if(canWrite){
+    const b=document.createElement("button"); b.type="button"; b.className="btn"; b.textContent="Usar mediana";
+    b.onclick=()=>{ const p=cleanPrice(m.mediana); if(!p) return; const cur=docs.get(d.__id)||{}; const patch={precio:p,precioEstimado:false,precioFuente:"mercadolibre"};
+      docs.set(d.__id,{...cur,...patch}); fillCard(el,docs.get(d.__id)); renderTotals(); chainWrite(d.__id,()=>col.doc(d.__id).update(patch)); };
+    box.append(b);
+  }
+}
+async function buscarML(id,silencioso){
+  const d=docs.get(id)||{}; const q=(d.busqueda||[d.pieza,d.compat].filter(Boolean).join(" ")).trim().slice(0,120);
+  if(!q||mlBusy.has(id)) return false;
+  mlBusy.add(id); const el=cards.get(id); if(el) refreshMeta(el,d);
+  let patch;
+  try{ const r=await callFn("precios-ml",{q,estado:d.estado||""}); patch={ml:r.ml}; }
+  catch(e){
+    const msg=e&&e.code==="ml_sin_permiso"?"hay que conectar la cuenta: tocá \"Conectar MercadoLibre\" arriba.":e&&e.code==="rate_limited"?"está ocupado, probá en un rato.":"no se pudo consultar. Probá de nuevo.";
+    patch={ml:{q,error:msg,fecha:Date.now()}};
+    if(!silencioso) $("#copyStatus").textContent="MercadoLibre: "+msg;
+    if(e&&e.code==="ml_sin_permiso") $("#mlConnBtn").classList.remove("hidden");
+  }finally{ mlBusy.delete(id); }
+  const cur=docs.get(id); if(!cur) return false;
+  docs.set(id,{...cur,...patch}); if(cards.get(id)) refreshMeta(cards.get(id),docs.get(id));
+  await chainWrite(id,()=>col.doc(id).update(patch));
+  return !patch.ml.error;
+}
+$("#mlAllBtn").addEventListener("click",async()=>{
+  const btn=$("#mlAllBtn"), st=$("#copyStatus");
+  const semana=7*86400000;
+  const todo=[...docs.entries()].filter(([id,d])=>(d.busqueda||d.pieza)&&!(d.ml&&d.ml.n>0&&Date.now()-d.ml.fecha<semana)).map(([id])=>id);
+  if(!todo.length){ st.textContent="Todos los repuestos ya tienen precio de MercadoLibre de esta semana."; return; }
+  btn.disabled=true; let ok=0, i=0;
+  for(const id of todo){
+    i++; st.textContent=`Buscando en MercadoLibre ${i} de ${todo.length}…`;
+    if(await buscarML(id,true)) ok++;
+    else if((docs.get(id)||{}).ml&&/conectar la cuenta/.test(docs.get(id).ml.error||"")){ st.textContent="MercadoLibre pide conectar la cuenta: tocá \"Conectar MercadoLibre\"."; $("#mlConnBtn").classList.remove("hidden"); btn.disabled=false; return; }
+    await new Promise(r=>setTimeout(r,400));
+  }
+  btn.disabled=false;
+  st.textContent=`Listo: ${ok} de ${todo.length} repuestos con precio de MercadoLibre. Tocá "Usar mediana" en cada uno o "Estimar precios faltantes".`;
+});
+
+$("#mlConnBtn").addEventListener("click",async()=>{
+  const btn=$("#mlConnBtn"), st=$("#copyStatus"); btn.disabled=true; st.textContent="Abriendo MercadoLibre…";
+  try{ const volver=location.origin+location.pathname; const r=await callFn("ml-auth",{volver}); location.href=r.url; }
+  catch(e){ btn.disabled=false; st.textContent=e&&e.code==="ml_sin_configurar"?"Falta cargar los datos de la app de MercadoLibre en Supabase.":"No se pudo abrir MercadoLibre. Probá de nuevo."; }
+});
+
+/* ---------- importar datos de la app vieja (entrar con #importar) ---------- */
+$("#impIn").addEventListener("change",async e=>{
+  const files=[...e.target.files]; e.target.value=""; const st=$("#impStatus");
+  const fotos=files.filter(f=>/\.(jpe?g|png|webp|mp4|mov)$/i.test(f.name));
+  const jsons=files.filter(f=>/\.json$/i.test(f.name));
+  if(!jsons.length){ st.textContent="No encontré fichas (.json) en esa carpeta. Elegí la carpeta \"datos\"."; return; }
+  let okF=0,i=0;
+  for(const f of fotos){
+    i++; st.textContent=`Subiendo foto ${i} de ${fotos.length}…`;
+    const id=f.name.replace(/\.[^.]+$/,"");
+    const type=f.type||(/\.png$/i.test(f.name)?"image/png":"image/jpeg");
+    const {error}=await sb.storage.from(BUCKET).upload(id,f,{contentType:type,cacheControl:"31536000",upsert:false});
+    if(!error||/exist|duplicate/i.test(error.message||"")) okF++; else console.warn(f.name,error);
+  }
+  const rows=[];
+  for(const f of jsons){ try{ const data=JSON.parse(await f.text()); if(!data||typeof data!=="object") continue;
+    if(String(data.autor||"").startsWith("u_")) data.autor="importado";
+    rows.push({id:f.name.replace(/\.json$/i,""),data,creado:Number(data.creado)||Date.now()}); }catch(err){} }
+  st.textContent=`Cargando ${rows.length} fichas…`;
+  for(let k=0;k<rows.length;k+=20){ const {error}=await sb.from("repuestos").upsert(rows.slice(k,k+20)); if(error){ st.textContent="No se pudieron cargar las fichas: "+error.message; return; } }
+  st.textContent=`Listo: ${okF} de ${fotos.length} fotos y ${rows.length} fichas importadas. Ya podés cerrar esta parte.`;
+});
+
+/* ---------- Excel ---------- */
+let downloads=null;
+$("#xlsBtn").addEventListener("click",async()=>{
+  const st=$("#copyStatus");
+  const items=[...docs.values()].filter(matches).sort((a,b)=>(a.categoria||"").localeCompare(b.categoria||"")||(a.pieza||"").localeCompare(b.pieza||""));
+  if(!items.length){st.textContent="No hay repuestos para exportar.";return;}
+  const head=["Pieza","Categoría","Sirve para","Marca","Código","Estado","Cantidad","Precio c/u","Total","Precio","ML mínimo","ML mediana","Publicaciones ML","Enlace ML"];
+  const rows=items.map(d=>{const q=Number(d.cantidad)||1,p=Number(d.precio)||0;
+    return [d.pieza||"(sin identificar)",d.categoria||"",d.compat||"",d.marca||"",d.codigo||"",d.estado||"",q,p,q*p,!p?"Falta":d.precioEstimado?"Estimado IA":"Confirmado",
+      (d.ml&&d.ml.min)||"",(d.ml&&d.ml.mediana)||"",(d.ml&&d.ml.n)||"",(d.ml&&(d.ml.enlace||d.ml.listado))||""];});
+  const fecha=new Date().toISOString().slice(0,10);
+  let data, filename;
+  if(window.XLSX){
+    const n=rows.length;
+    const aoa=[head,...rows,[],["TOTAL","","","","","",null,"",null,"","","","",""]];
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    for(let i=0;i<n;i++){const r=i+2; ws["I"+r]={t:"n",f:`G${r}*H${r}`,v:rows[i][8],z:'"$"#,##0'}; ws["H"+r].z='"$"#,##0';
+      for(const c of ["K","L"]) if(ws[c+r]&&ws[c+r].t==="n") ws[c+r].z='"$"#,##0';
+      const lk=rows[i][13]; if(lk) ws["N"+r]={t:"s",v:lk,l:{Target:lk}};}
+    const tr=n+3;
+    ws["G"+tr]={t:"n",f:`SUM(G2:G${n+1})`,v:rows.reduce((s,r)=>s+r[6],0)};
+    ws["I"+tr]={t:"n",f:`SUM(I2:I${n+1})`,v:rows.reduce((s,r)=>s+r[8],0),z:'"$"#,##0'};
+    ws["!cols"]=[{wch:38},{wch:16},{wch:34},{wch:18},{wch:16},{wch:16},{wch:9},{wch:12},{wch:13},{wch:13},{wch:12},{wch:12},{wch:10},{wch:40}];
+    ws["!autofilter"]={ref:`A1:N${n+1}`};
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Repuestos");
+    data=new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx"})); filename=`repuestos-${fecha}.xlsx`;
+  }else{
+    const csvEsc=v=>{const s=String(v??"");return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+    data="﻿"+[head,...rows].map(r=>r.map(csvEsc).join(";")).join("\n"); filename=`repuestos-${fecha}.csv`;
+  }
+  try{await downloads.save({filename,data}); st.textContent=`Excel descargado (${items.length} repuestos).`;}
+  catch(e){st.textContent=e&&e.code==="declined"?"Descarga cancelada.":"No se pudo descargar el archivo en esta vista.";}
+});
+
+/* ---------- arranque: login con Supabase ---------- */
+let loadTimer=null;
+function nombreDe(u){ return (u&&u.email||"").split("@")[0]; }
+async function cargarYEscuchar(){
+  loadTimer=setTimeout(()=>{$("#empty").textContent="No se pudo conectar con la lista todavía. Revisá la conexión.";},10000);
+  const rows=new Map();
+  const emit=()=>{ const arr=[...rows.values()].sort((a,b)=>(b.creado||0)-(a.creado||0));
+    onSnap({docs:arr.map(r=>({id:r.id,data:()=>({...(r.data||{}),creado:(r.data&&r.data.creado)||r.creado})}))}); };
+  let t=null; const later=()=>{ clearTimeout(t); t=setTimeout(emit,120); };
+  sb.channel("repuestos").on("postgres_changes",{event:"*",schema:"public",table:"repuestos"},p=>{
+    if(p.eventType==="DELETE"){ rows.delete(p.old.id); } else if(p.new&&p.new.id){ rows.set(p.new.id,p.new); }
+    later();
+  }).subscribe(status=>{ if(status==="CHANNEL_ERROR"||status==="TIMED_OUT") $("#copyStatus").textContent="Se cortó la actualización automática. Si no ves cambios, recargá la página."; });
+  const {data,error}=await sb.from("repuestos").select("id,data,creado").order("creado",{ascending:false}).limit(2000);
+  if(error){ clearTimeout(loadTimer); $("#empty").textContent="No se pudo leer la lista: "+error.message; return; }
+  for(const r of data) rows.set(r.id,r);
+  emit();
+  const conectado=[...docs.values()].some(d=>d.ml&&!d.ml.error);
+  if(!conectado&&!/ml=ok/.test(location.search)) $("#mlConnBtn").classList.remove("hidden");
+}
+function mostrarClave(obligatorio){
+  $("#pwd").classList.remove("hidden"); $("#pwdStatus").textContent=""; $("#p1").value=""; $("#p2").value="";
+  $("#pwdMsg").textContent=obligatorio?"Es tu primera vez: elegí una contraseña nueva de al menos 8 caracteres (la inicial es muy fácil de adivinar).":"Elegí una contraseña nueva de al menos 8 caracteres.";
+  $("#p1").focus();
+}
+$("#pwdBtn").onclick=()=>mostrarClave(false);
+$("#pwdCancel").onclick=()=>$("#pwd").classList.add("hidden");
+$("#pwd").addEventListener("submit",async e=>{
+  e.preventDefault(); const a=$("#p1").value, b=$("#p2").value, st=$("#pwdStatus");
+  if(a.length<8){ st.textContent="Tiene que tener al menos 8 caracteres."; return; }
+  if(a!==b){ st.textContent="Las dos contraseñas no coinciden."; return; }
+  st.textContent="Guardando…";
+  const {error}=await sb.auth.updateUser({password:a,data:{cambiar_clave:false}});
+  if(error){ st.textContent=/same/i.test(error.message)?"Tiene que ser distinta de la actual.":"No se pudo cambiar: "+error.message; return; }
+  st.textContent="Contraseña cambiada."; setTimeout(()=>$("#pwd").classList.add("hidden"),1200);
+});
+$("#outBtn").onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
+$("#login").addEventListener("submit",async e=>{
+  e.preventDefault(); const st=$("#lStatus"), btn=$("#lBtn");
+  let u=$("#lUser").value.trim().toLowerCase(); const pw=$("#lPass").value;
+  if(!u||!pw) return; const email=u.includes("@")?u:`${u}@${DOMINIO}`;
+  btn.disabled=true; st.textContent="Entrando…";
+  const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
+  btn.disabled=false;
+  if(error){ st.textContent=/invalid/i.test(error.message)?"Usuario o contraseña incorrectos.":"No se pudo entrar: "+error.message; return; }
+  $("#lPass").value=""; iniciar(data.user);
+});
+let iniciado=false;
+function iniciar(u){
+  if(iniciado) return; iniciado=true;
+  $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
+  uid=nombreDe(u); $("#whoami").textContent="Hola, "+uid;
+  col=makeCol(); assets=assetsApi; downloads=downloadsApi; canWrite=true; canImages=true;
+  applyWriteGate();
+  if(u.user_metadata&&u.user_metadata.cambiar_clave) mostrarClave(true);
+  if(/importar/.test(location.hash)) $("#impPanel").classList.remove("hidden");
+  const qs=new URLSearchParams(location.search);
+  if(qs.get("ml")==="ok"){ $("#copyStatus").textContent="MercadoLibre quedó conectado. Ya podés buscar precios."; history.replaceState(null,"",location.pathname+location.hash); }
+  cargarYEscuchar();
+}
+(async()=>{
+  if(!sb){ $("#app").classList.remove("hidden"); $("#uploadPanel").classList.add("hidden"); $("#empty").textContent="Falta configurar config.js con los datos de Supabase (ver la guía)."; return; }
+  const {data:{session}}=await sb.auth.getSession();
+  if(session&&session.user) iniciar(session.user);
+  else { $("#login").classList.remove("hidden"); $("#lUser").focus(); }
+})();
+})();
+</script>
+</body>
+</html>
