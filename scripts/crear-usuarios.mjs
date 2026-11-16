@@ -10,7 +10,7 @@ import { stdin, stdout, env, exit } from "node:process";
 
 const URL_SB = (env.SUPABASE_URL || "").replace(/\/$/, "");
 const KEY = env.SUPABASE_SERVICE_ROLE_KEY || "";
-const DOMINIO = env.DOMINIO_USUARIOS || "repuestos-app.com.ar"; // tiene que ser igual al de web/config.js
+const DOMINIO = env.DOMINIO_USUARIOS || "avanor.com"; // tiene que ser igual al de web/config.js
 const USUARIOS = (env.USUARIOS || "lucas,franco,elvas").split(",").map((u) => u.trim().toLowerCase()).filter(Boolean);
 
 if (!URL_SB || !KEY) {

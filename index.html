@@ -205,7 +205,7 @@ let db=null, col=null, assets=null, sample=null, user=null, uid=null, canWrite=t
 /* ---------- Supabase: reemplaza a claude.use(...) del artefacto ---------- */
 const CFG=window.APP_CONFIG||{};
 const sb=(window.supabase&&CFG.SUPABASE_URL)?window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY):null;
-const DOMINIO=CFG.DOMINIO_USUARIOS||"repuestos-app.com.ar";
+const DOMINIO=CFG.DOMINIO_USUARIOS||"avanor.com";
 const BUCKET="repuestos";
 const blobUrl=id=>id?`${CFG.SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(id)}`:"";
 const newId=()=>[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,"0")).join("");
