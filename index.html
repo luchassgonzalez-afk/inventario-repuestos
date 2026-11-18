@@ -45,6 +45,8 @@ h1{font:700 28px/1.1 var(--display);margin:0;letter-spacing:.01em;text-wrap:bala
 input[type=text],input[type=number],select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%}
 input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .status{font-size:14px;color:var(--muted);min-height:1.2em}
+#aviso{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:max-content;max-width:min(92vw,560px);background:var(--ink);color:var(--panel);padding:10px 14px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:14px;line-height:1.35;z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+#aviso.on{opacity:1}
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
 .tile b{display:block;font:700 24px var(--display);font-variant-numeric:tabular-nums}
@@ -623,7 +625,12 @@ $("#vNext").onclick=()=>{if(!vState||vState.video)return;vState.i=(vState.i+1)%v
 $("#viewer").addEventListener("click",e=>{ if(e.target.id==="viewer") closeViewer(); });
 document.addEventListener("keydown",e=>{ if(!vState) return; if(e.key==="Escape") closeViewer(); if(e.key==="ArrowLeft") $("#vPrev").click(); if(e.key==="ArrowRight") $("#vNext").click(); });
 let aiQueue=Promise.resolve();
-function queueIdentify(id,fotos){ aiQueue=aiQueue.then(()=>identify(id,fotos)).catch(()=>{}); return aiQueue; }
+// "re" solo viene al volver a identificar una ficha: {antes:{ia,comentario}, previo:{pieza,...}}.
+function queueIdentify(id,fotos,re){ aiQueue=aiQueue.then(()=>identify(id,fotos,re)).catch(()=>{}); return aiQueue; }
+function aviso(t){
+  let el=$("#aviso"); if(!el){ el=document.createElement("div"); el.id="aviso"; el.setAttribute("role","status"); el.setAttribute("aria-live","polite"); document.body.append(el); }
+  el.textContent=t; el.classList.add("on"); clearTimeout(aviso.t); aviso.t=setTimeout(()=>el.classList.remove("on"),10000);
+}
 
 function prompt(nota,nImgs){
   return `Sos un experto en repuestos de motos del mercado argentino (Honda, Yamaha, Suzuki, Motomel, Gilera, Corven, Zanella, Keller, Mondial, Guerrero, Bajaj, Beta, Siambretta, etc., sobre todo motos 110 a 300 cc).
@@ -656,16 +663,24 @@ function anchorsText(){
     `\nTodavía no hay precios de referencia cargados, así que estimá con prudencia.`);
 }
 function cleanPrice(v){const n=Math.round(Number(String(v).replace(/[^\d.]/g,""))||0);return n>0?Math.round(n/500)*500||500:0;}
-async function identify(id,fotos){
+// Campos que "Identificar con IA" vuelve a completar desde cero.
+const REIDENT=["pieza","categoria","marca","compat","codigo","busqueda"];
+async function identify(id,fotos,re){
   const imgs=(Array.isArray(fotos)?fotos:[fotos]).filter(Boolean).slice(0,imgMax);
-  if(!sample||!canImages||!imgs.length) return;
+  if(!sample||!canImages||!imgs.length){ if(re) await volverAntes(id,re,"la IA no está disponible ahora."); return; }
   const d=docs.get(id)||{};
   try{
     const r=await sample.json(prompt(d.nota||"",imgs.length),{fotos:imgs});
     if(!r||typeof r!=="object") throw {code:"invalid_json"};
     const cur=docs.get(id)||{};
     const patch={ia:"listo"};
-    const keep=(k,v)=>{ if(!cur[k] && v!==undefined && v!==null && v!=="") patch[k]=v; };
+    // Lo nuevo solo completa campos vacíos. Al volver a identificar, reemplaza lo que había puesto la IA,
+    // salvo que alguien lo haya editado mientras la IA trabajaba.
+    const keep=(k,v)=>{
+      v=v??"";
+      if(re&&REIDENT.includes(k)){ if((cur[k]||"")===(re.previo[k]||"")) patch[k]=v; }
+      else if(!cur[k]&&v!=="") patch[k]=v;
+    };
     keep("pieza",String(r.pieza||"").slice(0,120));
     keep("categoria",CATS.includes(r.categoria)?r.categoria:"Otro");
     keep("marca",String(r.marca||"").slice(0,80));
@@ -687,17 +702,26 @@ async function identify(id,fotos){
              e&&e.code==="not_granted"?"No se dio permiso a la IA. Completá los datos a mano.":
              e&&IA_FATAL.has(e.code)?"La IA no está disponible: "+iaMsg(e.code):
              "No se pudo identificar. Completá los datos a mano o probá de nuevo.";
+    if(re){ await volverAntes(id,re,iaMsg(e&&e.code,"probá de nuevo en un rato.")); return; }
     await chainWrite(id,()=>col.doc(id).update({ia:"error",comentario:msg}));
   }
+}
+// Si falla "Identificar con IA", la ficha vuelve a como estaba y se avisa abajo de la pantalla.
+async function volverAntes(id,re,msg){
+  const cur=docs.get(id); if(!cur) return;
+  docs.set(id,{...cur,...re.antes}); if(cards.get(id)) refreshMeta(cards.get(id),docs.get(id));
+  await chainWrite(id,()=>col.doc(id).update(re.antes));
+  aviso(`No se pudo volver a identificar${cur.pieza?` "${cur.pieza}"`:""}: ${msg} Los datos quedaron como estaban.`);
 }
 async function reidentify(id){
   const d=docs.get(id)||{};
   const blob=fotoList(d);
-  if(!blob.length){ await chainWrite(id,()=>col.doc(id).update({ia:"error",comentario:"No se pudo leer la foto para identificarla."})); return; }
-  const reset={ia:"pendiente",comentario:"",pieza:"",categoria:"",marca:"",compat:"",codigo:"",busqueda:""};
-  docs.set(id,{...d,...reset});
-  await chainWrite(id,()=>col.doc(id).update(reset));
-  queueIdentify(id,blob);
+  if(!blob.length){ aviso("No se pudo leer la foto para volver a identificarla."); return; }
+  // No se borra nada antes de tiempo: los datos se reemplazan recién cuando la IA responde bien.
+  const re={antes:{ia:d.ia||"",comentario:d.comentario||""},previo:Object.fromEntries(REIDENT.map(k=>[k,d[k]||""]))};
+  docs.set(id,{...d,ia:"pendiente"}); if(cards.get(id)) refreshMeta(cards.get(id),docs.get(id));
+  await chainWrite(id,()=>col.doc(id).update({ia:"pendiente"}));
+  queueIdentify(id,blob,re);
 }
 $("#fileIn").addEventListener("change",async e=>{
   const files=[...e.target.files]; e.target.value=""; if(!files.length) return;
@@ -987,8 +1011,6 @@ function iniciar(u){
   applyWriteGate();
   if(u.user_metadata&&u.user_metadata.cambiar_clave) mostrarClave(true);
   if(/importar/.test(location.hash)) $("#impPanel").classList.remove("hidden");
-  const qs=new URLSearchParams(location.search);
-  if(qs.get("ml")==="ok"){ $("#copyStatus").textContent="MercadoLibre quedó conectado. Ya podés buscar precios."; history.replaceState(null,"",location.pathname+location.hash); }
   cargarYEscuchar();
 }
 (async()=>{
