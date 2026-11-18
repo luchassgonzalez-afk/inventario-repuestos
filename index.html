@@ -162,10 +162,9 @@ input[type=password]{font:inherit;color:var(--ink);background:var(--bg);border:1
       <button class="btn primary" id="xlsBtn" type="button">Descargar Excel</button>
       <button class="btn" id="copyBtn" type="button">Copiar listado</button>
       <button class="btn" id="mlAllBtn" type="button">Buscar precios en MercadoLibre</button>
-      <button class="btn hidden" id="mlConnBtn" type="button">Conectar MercadoLibre</button>
       <button class="btn" id="estBtn" type="button">Estimar precios faltantes</button>
     </div>
-    <p class="note" style="margin:0">"Buscar precios en MercadoLibre" trae el precio más bajo y el del medio de las publicaciones reales. Los precios estimados por la IA usan esos datos y los que ya cargaste a mano. Revisalos antes de publicar.</p>
+    <p class="note" style="margin:0">"Buscar precios en MercadoLibre" hace que la IA busque publicaciones reales en MercadoLibre y trae el precio más bajo y el del medio (tarda unos segundos por repuesto y usa crédito de Claude). Los precios estimados por la IA usan esos datos y los que ya cargaste a mano. Revisalos antes de publicar.</p>
     <div class="chips" id="chips"></div>
     <div class="status" id="copyStatus" role="status" aria-live="polite"></div>
     <textarea class="out hidden" id="copyOut" aria-label="Listado para copiar" readonly></textarea>
@@ -242,6 +241,17 @@ async function callFn(name,body){
   if(!r.ok) throw {code:(j&&j.code)||"error",message:(j&&j.error)||""};
   return j;
 }
+// Mensajes para los errores de las funciones que usan la IA.
+const IA_MSG={
+  rate_limited:"la IA está ocupada, probá en un rato.",
+  ia_tardo:"la IA tardó demasiado, probá de nuevo.",
+  sampling_disabled:"falta cargar la clave de Anthropic en Supabase.",
+  ia_clave:"la clave de Anthropic no es válida.",
+  ia_sin_credito:"se terminó el crédito de Claude (se carga en platform.claude.com).",
+  not_granted:"iniciá sesión de nuevo.",
+};
+const IA_FATAL=new Set(["sampling_disabled","ia_clave","ia_sin_credito","not_granted"]);
+function iaMsg(code,otro){ return IA_MSG[code]||otro||"no se pudo completar. Probá de nuevo."; }
 sample={ async json(prompt,opts){ const j=await callFn("ia",{prompt,fotos:(opts&&opts.fotos)||[]}); return j.resultado; } };
 const downloadsApi={ async save({filename,data}){
   const blob=data instanceof Blob?data:new Blob([data],{type:/\.xlsx$/.test(filename)?"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":/\.csv$/.test(filename)?"text/csv":"application/octet-stream"});
@@ -675,6 +685,7 @@ async function identify(id,fotos){
     if(e&&(e.code==="not_granted"||e.code==="sampling_disabled"||e.code==="images_unavailable")){canImages=false;}
     const msg=e&&e.code==="rate_limited"?"La IA está ocupada. Probá \"Identificar con IA\" en un rato.":
              e&&e.code==="not_granted"?"No se dio permiso a la IA. Completá los datos a mano.":
+             e&&IA_FATAL.has(e.code)?"La IA no está disponible: "+iaMsg(e.code):
              "No se pudo identificar. Completá los datos a mano o probá de nuevo.";
     await chainWrite(id,()=>col.doc(id).update({ia:"error",comentario:msg}));
   }
@@ -796,7 +807,7 @@ Respondé SOLO un array JSON con un objeto por repuesto: [{"id": "...", "precio"
     renderTotals(); for(const [id,el] of cards) fillCard(el,docs.get(id)||{});
     st.textContent=n?`Listo: se estimaron ${n} precios. Revisalos antes de publicar.`:"La IA no devolvió precios válidos. Probá de nuevo.";
   }catch(e){
-    st.textContent=e&&e.code==="rate_limited"?"La IA está ocupada. Probá en un rato.":e&&e.code==="not_granted"?"No se dio permiso a la IA para estimar precios.":"No se pudieron estimar los precios. Probá de nuevo.";
+    st.textContent=e&&e.code==="rate_limited"?"La IA está ocupada. Probá en un rato.":e&&e.code==="not_granted"?"No se dio permiso a la IA para estimar precios.":e&&IA_FATAL.has(e.code)?"No se pudieron estimar los precios: "+iaMsg(e.code):"No se pudieron estimar los precios. Probá de nuevo.";
   }finally{btn.disabled=false;}
 });
 
@@ -824,22 +835,23 @@ function renderML(el,d){
     box.append(b);
   }
 }
-async function buscarML(id,silencioso){
+// Devuelve el código del resultado: "ok", "skip" o el código de error de la función.
+// En lote (enLote=true), si la IA está ocupada no guarda el error: el lote espera y reintenta.
+async function buscarML(id,enLote){
   const d=docs.get(id)||{}; const q=(d.busqueda||[d.pieza,d.compat].filter(Boolean).join(" ")).trim().slice(0,120);
-  if(!q||mlBusy.has(id)) return false;
-  mlBusy.add(id); const el=cards.get(id); if(el) refreshMeta(el,d);
-  let patch;
-  try{ const r=await callFn("precios-ml",{q,estado:d.estado||""}); patch={ml:r.ml}; }
-  catch(e){
-    const msg=e&&e.code==="ml_sin_permiso"?"hay que conectar la cuenta: tocá \"Conectar MercadoLibre\" arriba.":e&&e.code==="rate_limited"?"está ocupado, probá en un rato.":"no se pudo consultar. Probá de nuevo.";
-    patch={ml:{q,error:msg,fecha:Date.now()}};
-    if(!silencioso) $("#copyStatus").textContent="MercadoLibre: "+msg;
-    if(e&&e.code==="ml_sin_permiso") $("#mlConnBtn").classList.remove("hidden");
-  }finally{ mlBusy.delete(id); }
-  const cur=docs.get(id); if(!cur) return false;
+  if(!q||mlBusy.has(id)) return "skip";
+  mlBusy.add(id); if(cards.get(id)) refreshMeta(cards.get(id),d);
+  let r=null, code="ok";
+  try{ r=await callFn("precios-ml",{q,estado:d.estado||""}); }
+  catch(e){ code=(e&&e.code)||"error"; }
+  finally{ mlBusy.delete(id); }
+  const cur=docs.get(id); if(!cur) return code;
+  if(enLote&&code==="rate_limited"){ if(cards.get(id)) refreshMeta(cards.get(id),cur); return code; }
+  const patch=r?{ml:r.ml}:{ml:{q,error:iaMsg(code,"no se pudo buscar. Probá de nuevo."),fecha:Date.now()}};
+  if(!r&&!enLote) $("#copyStatus").textContent="MercadoLibre: "+patch.ml.error;
   docs.set(id,{...cur,...patch}); if(cards.get(id)) refreshMeta(cards.get(id),docs.get(id));
   await chainWrite(id,()=>col.doc(id).update(patch));
-  return !patch.ml.error;
+  return code;
 }
 $("#mlAllBtn").addEventListener("click",async()=>{
   const btn=$("#mlAllBtn"), st=$("#copyStatus");
@@ -847,20 +859,21 @@ $("#mlAllBtn").addEventListener("click",async()=>{
   const todo=[...docs.entries()].filter(([id,d])=>(d.busqueda||d.pieza)&&!(d.ml&&d.ml.n>0&&Date.now()-d.ml.fecha<semana)).map(([id])=>id);
   if(!todo.length){ st.textContent="Todos los repuestos ya tienen precio de MercadoLibre de esta semana."; return; }
   btn.disabled=true; let ok=0, i=0;
-  for(const id of todo){
-    i++; st.textContent=`Buscando en MercadoLibre ${i} de ${todo.length}…`;
-    if(await buscarML(id,true)) ok++;
-    else if((docs.get(id)||{}).ml&&/conectar la cuenta/.test(docs.get(id).ml.error||"")){ st.textContent="MercadoLibre pide conectar la cuenta: tocá \"Conectar MercadoLibre\"."; $("#mlConnBtn").classList.remove("hidden"); btn.disabled=false; return; }
-    await new Promise(r=>setTimeout(r,400));
-  }
-  btn.disabled=false;
-  st.textContent=`Listo: ${ok} de ${todo.length} repuestos con precio de MercadoLibre. Tocá "Usar mediana" en cada uno o "Estimar precios faltantes".`;
-});
-
-$("#mlConnBtn").addEventListener("click",async()=>{
-  const btn=$("#mlConnBtn"), st=$("#copyStatus"); btn.disabled=true; st.textContent="Abriendo MercadoLibre…";
-  try{ const volver=location.origin+location.pathname; const r=await callFn("ml-auth",{volver}); location.href=r.url; }
-  catch(e){ btn.disabled=false; st.textContent=e&&e.code==="ml_sin_configurar"?"Falta cargar los datos de la app de MercadoLibre en Supabase.":"No se pudo abrir MercadoLibre. Probá de nuevo."; }
+  try{
+    for(const id of todo){
+      i++; let code, esperas=0;
+      for(;;){
+        st.textContent=`Buscando en MercadoLibre ${i} de ${todo.length}… (dejá la página abierta)`;
+        code=await buscarML(id,true);
+        if(code!=="rate_limited"||esperas>=3) break;
+        esperas++; st.textContent=`La IA está ocupada. Sigo en un minuto (${i} de ${todo.length})…`;
+        await new Promise(r=>setTimeout(r,60000));
+      }
+      if(code==="ok") ok++;
+      if(IA_FATAL.has(code)){ st.textContent="MercadoLibre: "+iaMsg(code); return; }
+    }
+    st.textContent=`Listo: ${ok} de ${todo.length} repuestos con precio de MercadoLibre. Tocá "Usar mediana" en cada uno o "Estimar precios faltantes".`;
+  }finally{ btn.disabled=false; }
 });
 
 /* ---------- importar datos de la app vieja (entrar con #importar) ---------- */
@@ -937,8 +950,6 @@ async function cargarYEscuchar(){
   if(error){ clearTimeout(loadTimer); $("#empty").textContent="No se pudo leer la lista: "+error.message; return; }
   for(const r of data) rows.set(r.id,r);
   emit();
-  const conectado=[...docs.values()].some(d=>d.ml&&!d.ml.error);
-  if(!conectado&&!/ml=ok/.test(location.search)) $("#mlConnBtn").classList.remove("hidden");
 }
 function mostrarClave(obligatorio){
   $("#pwd").classList.remove("hidden"); $("#pwdStatus").textContent=""; $("#p1").value=""; $("#p2").value="";
